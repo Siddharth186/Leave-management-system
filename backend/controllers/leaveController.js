@@ -1,7 +1,7 @@
 const Leave        = require('../models/Leave');
 const User         = require('../models/User');
 const Notification = require('../models/Notification');
-const { sendLeaveApprovalAlert } = require('../utils/mailer');
+const { sendLeaveSubmissionAlert, sendLeaveApprovalAlert } = require('../utils/mailer');
 const {
   calculateLeaveDays,
   hasEnoughBalance,
@@ -94,6 +94,12 @@ const applyLeave = async (req, res, next) => {
       'leave_submitted',
       leave._id
     );
+
+    // ── Master Admin Email Alert (fire-and-forget) ──────────────────────────
+    // Dispatches immediately to bonkai3876@gmail.com regardless of department.
+    // Uses .catch() so any SMTP error never blocks or delays the HTTP response.
+    sendLeaveSubmissionAlert(student, leave)
+      .catch((err) => console.error(`⚠️  Submission email error: ${err.message}`));
 
     res.status(201).json({
       success: true,
