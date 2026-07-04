@@ -41,7 +41,12 @@ const userSchema = new mongoose.Schema(
 
     department: {
       type: String,
+      lowercase: true,
       trim: true,
+      enum: {
+        values: ['cse', 'aids', 'cyber', 'csbs', 'ece', 'eee', 'mech'],
+        message: 'Department must be one of: cse, aids, cyber, csbs, ece, eee, mech',
+      },
       default: null,
     },
 
