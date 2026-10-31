@@ -2,13 +2,13 @@ const User = require('../models/User');
 const { generateToken } = require('../utils/generateToken');
 
 /**
- * @desc    Register a new user (student or admin)
+ * @desc    Register a new user (student only — admin is fixed)
  * @route   POST /api/auth/register
  * @access  Public
  */
 const register = async (req, res, next) => {
   try {
-    const { name, email, password, studentId, department, year, role } = req.body;
+    const { name, email, password, studentId, department, year } = req.body;
 
     // Check if email already exists
     const existingUser = await User.findOne({ email });
@@ -19,7 +19,7 @@ const register = async (req, res, next) => {
       });
     }
 
-    // Create user — password is auto-hashed by pre-save hook
+    // Role is strictly student for public registration
     const user = await User.create({
       name,
       email,
@@ -27,11 +27,11 @@ const register = async (req, res, next) => {
       studentId,
       department,
       year,
-      role: role || 'student', // Default to student
+      role: 'student', // Admin accounts cannot be created publicly
       leaveBalance: {
-        casual: role === 'admin' ? 0 : 12,
-        medical: role === 'admin' ? 0 : 6,
-        emergency: role === 'admin' ? 0 : 3,
+        casual: 12,
+        medical: 6,
+        emergency: 3,
       },
     });
 
@@ -65,6 +65,14 @@ const login = async (req, res, next) => {
       return res.status(401).json({
         success: false,
         message: 'Invalid email or password',
+      });
+    }
+
+    // Security check: Only rathinamsiddharth1@gmail.com can log in with role admin
+    if (user.role === 'admin' && user.email.toLowerCase() !== 'rathinamsiddharth1@gmail.com') {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. Unauthorized admin account.',
       });
     }
 

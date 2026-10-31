@@ -1,8 +1,13 @@
-require('dotenv').config(); // Load environment variables first
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '.env') }); // Load environment variables first
 
 const express = require('express');
 const cors = require('cors');
+const mongoose = require('mongoose');
 const connectDB = require('./config/db');
+
+// Fast-fail instead of 10-second buffering when database is disconnected
+mongoose.set('bufferCommands', false);
 
 // Import route modules
 const authRoutes = require('./routes/authRoutes');
@@ -19,29 +24,38 @@ const { notFound, errorHandler } = require('./middleware/errorMiddleware');
 
 const app = express();
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Connect to Database
-// ─────────────────────────────────────────────────────────────────────────────
-
+// Attempt immediate connection
 connectDB();
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Middleware
 // ─────────────────────────────────────────────────────────────────────────────
 
-// CORS — Allow frontend on CLIENT_URL to make requests
+// CORS — Allow frontend requests
 app.use(
   cors({
-    origin: process.env.CLIENT_URL || 'http://localhost:5173',
-    credentials: true, // Allow cookies/auth headers
+    origin: process.env.CLIENT_URL || true, // Allow frontend origin or reflect origin
+    credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
     allowedHeaders: ['Content-Type', 'Authorization'],
   })
 );
 
-// Body parser — parse JSON request bodies (max 10mb to handle base64 avatars)
+// Body parser
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Ensure DB connection for serverless invocations
+app.use(async (req, res, next) => {
+  if (mongoose.connection.readyState !== 1) {
+    try {
+      await connectDB(false);
+    } catch {
+      // Ignored here; handled by guard middleware below
+    }
+  }
+  next();
+});
 
 // Request logging in development
 if (process.env.NODE_ENV === 'development') {
@@ -55,19 +69,37 @@ if (process.env.NODE_ENV === 'development') {
 // API Routes
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Health check endpoint — verify server is running
+// Health check endpoint
 app.get('/', (req, res) => {
   res.status(200).json({
     success: true,
     message: 'Leave Management System API is running',
     version: '1.0.0',
+    databaseConnected: mongoose.connection.readyState === 1,
     timestamp: new Date().toISOString(),
   });
 });
 
-// Health check for monitoring tools (responds faster than /)
+// Health check for monitoring tools
 app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'ok' });
+  res.status(200).json({
+    status: 'ok',
+    database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+  });
+});
+
+// Database guard middleware: check connection state before querying DB (allow email-action to handle itself)
+app.use('/api', (req, res, next) => {
+  if (req.path.startsWith('/leaves/email-action')) {
+    return next();
+  }
+  if (mongoose.connection.readyState !== 1) {
+    return res.status(503).json({
+      success: false,
+      message: 'Database is not connected. Please ensure MongoDB Atlas IP Whitelist allows 0.0.0.0/0 or check MONGO_URI.',
+    });
+  }
+  next();
 });
 
 // Mount API routes with /api prefix
@@ -80,67 +112,35 @@ app.use('/api/notifications', notificationRoutes);
 // Error Handling
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Ignore favicon requests from browsers hitting the API directly
+// Ignore favicon requests
 app.get('/favicon.ico', (req, res) => res.status(204).end());
 
-// 404 handler — catches requests to routes that don't exist
-// MUST be placed after all valid routes
+// 404 handler
 app.use(notFound);
 
-// Global error handler — catches all errors from controllers/middleware
-// MUST be the last middleware
+// Global error handler
 app.use(errorHandler);
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Start Server
+// Serverless / Local Export
 // ─────────────────────────────────────────────────────────────────────────────
 
-const PORT = process.env.PORT || 5000;
+// Export app for Vercel serverless deployment
+module.exports = app;
 
-app.listen(PORT, () => {
-  console.log('╔═══════════════════════════════════════════════════════════════╗');
-  console.log('║                                                               ║');
-  console.log('║   🚀  Leave Management System API                             ║');
-  console.log('║                                                               ║');
-  console.log('╚═══════════════════════════════════════════════════════════════╝');
-  console.log('');
-  console.log(`📡  Server running on port ${PORT}`);
-  console.log(`🌍  Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`🔗  Local: http://localhost:${PORT}`);
-  console.log('');
-  console.log('Available API endpoints:');
-  console.log('  POST   /api/auth/register');
-  console.log('  POST   /api/auth/login');
-  console.log('  GET    /api/auth/profile');
-  console.log('  POST   /api/leaves/apply');
-  console.log('  GET    /api/leaves/history');
-  console.log('  GET    /api/leaves/pending');
-  console.log('  PUT    /api/leaves/approve/:id');
-  console.log('  PUT    /api/leaves/reject/:id');
-  console.log('  GET    /api/dashboard/metrics');
-  console.log('  GET    /api/dashboard/chart');
-  console.log('  GET    /api/notifications');
-  console.log('');
-  console.log('Press Ctrl+C to stop the server');
-  console.log('─────────────────────────────────────────────────────────────────');
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Unhandled Rejection Handler
-// ─────────────────────────────────────────────────────────────────────────────
-
-// Catches unhandled promise rejections (e.g., DB connection failures)
-process.on('unhandledRejection', (err) => {
-  console.error('❌ UNHANDLED REJECTION! Shutting down gracefully...');
-  console.error(err.name, err.message);
-  console.error(err.stack);
-  process.exit(1);
-});
-
-// Catches uncaught exceptions (e.g., syntax errors in production)
-process.on('uncaughtException', (err) => {
-  console.error('❌ UNCAUGHT EXCEPTION! Shutting down immediately...');
-  console.error(err.name, err.message);
-  console.error(err.stack);
-  process.exit(1);
-});
+// In local development or standalone server, start listen loop
+if (!process.env.VERCEL) {
+  const PORT = process.env.PORT || 5001;
+  app.listen(PORT, () => {
+    console.log('╔═══════════════════════════════════════════════════════════════╗');
+    console.log('║                                                               ║');
+    console.log('║   🚀  Leave Management System API                             ║');
+    console.log('║                                                               ║');
+    console.log('╚═══════════════════════════════════════════════════════════════╝');
+    console.log('');
+    console.log(`📡  Server running on port ${PORT}`);
+    console.log(`🌍  Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`🔗  Local: http://localhost:${PORT}`);
+    console.log('─────────────────────────────────────────────────────────────────');
+  });
+}

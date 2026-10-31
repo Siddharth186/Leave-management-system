@@ -45,16 +45,6 @@ export const Register = () => {
     setForm((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleRoleSwitch = (role) => {
-    // Reset student-only fields when switching to admin
-    setForm((prev) => ({
-      ...prev,
-      role,
-      studentId:  role === 'admin' ? '' : prev.studentId,
-      year:       role === 'admin' ? '' : prev.year,
-    }));
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
@@ -68,6 +58,7 @@ export const Register = () => {
     try {
       const response = await registerAPI({
         ...form,
+        role: 'student',
         year: form.year ? parseInt(form.year, 10) : undefined,
       });
       localStorage.setItem('lms_token', response.token);
@@ -89,9 +80,9 @@ export const Register = () => {
           <div className="w-12 h-12 bg-cyan-500/20 rounded-xl flex items-center justify-center mb-4 border border-cyan-500/30">
             <UserPlus className="w-6 h-6 text-cyan-400" />
           </div>
-          <h2 className="text-2xl font-bold text-slate-100">Create an Account</h2>
+          <h2 className="text-2xl font-bold text-slate-100">Create Student Account</h2>
           <p className="mt-2 text-sm text-slate-400 text-center">
-            Join the Student Leave Portal
+            Sign up to access the Student Leave Management Portal
           </p>
         </div>
 
@@ -103,30 +94,6 @@ export const Register = () => {
         )}
 
         <form className="space-y-4" onSubmit={handleSubmit}>
-
-          {/* ── Role Selector ──────────────────────────────────────────────── */}
-          <div>
-            <label className={labelCls}>I am a</label>
-            <div className="grid grid-cols-2 gap-3">
-              {[
-                { key: 'student', icon: '🎓', label: 'Student' },
-                { key: 'admin',   icon: '🛡️', label: 'Admin / Faculty' },
-              ].map(({ key, icon, label }) => (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => handleRoleSwitch(key)}
-                  className={`py-2.5 rounded-lg border text-sm font-medium transition-all
-                    ${form.role === key
-                      ? 'bg-cyan-500/20 border-cyan-500/50 text-cyan-400'
-                      : 'bg-slate-800/50 border-slate-700 text-slate-400 hover:border-slate-600'
-                    }`}
-                >
-                  {icon} {label}
-                </button>
-              ))}
-            </div>
-          </div>
 
           {/* ── Full Name ──────────────────────────────────────────────────── */}
           <div>
@@ -167,7 +134,7 @@ export const Register = () => {
             />
           </div>
 
-          {/* ── Department (both roles — enum enforced) ───────────────────── */}
+          {/* ── Department ───────────────────────────────────────────────── */}
           <div>
             <label htmlFor="department" className={labelCls}>
               Department <span className="text-red-400">*</span>
@@ -182,38 +149,37 @@ export const Register = () => {
                 <option key={value} value={value}>{label}</option>
               ))}
             </select>
-            <p className="mt-1 text-xs text-slate-500">
-              This determines which admin can review your leave requests.
-            </p>
           </div>
 
-          {/* ── Student-only fields ────────────────────────────────────────── */}
-          {form.role === 'student' && (
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label htmlFor="studentId" className={labelCls}>Student ID</label>
-                <input
-                  id="studentId" name="studentId" type="text"
-                  value={form.studentId} onChange={handleChange}
-                  placeholder="CS21001"
-                  className={inputCls}
-                />
-              </div>
-              <div>
-                <label htmlFor="year" className={labelCls}>Year</label>
-                <select
-                  id="year" name="year"
-                  value={form.year} onChange={handleChange}
-                  className={inputCls}
-                >
-                  <option value="">Select year</option>
-                  {[1, 2, 3, 4, 5].map((y) => (
-                    <option key={y} value={y}>Year {y}</option>
-                  ))}
-                </select>
-              </div>
+          {/* ── Student Details ────────────────────────────────────────────── */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label htmlFor="studentId" className={labelCls}>
+                Student ID <span className="text-red-400">*</span>
+              </label>
+              <input
+                id="studentId" name="studentId" type="text" required
+                value={form.studentId} onChange={handleChange}
+                placeholder="CS21001"
+                className={inputCls}
+              />
             </div>
-          )}
+            <div>
+              <label htmlFor="year" className={labelCls}>
+                Year <span className="text-red-400">*</span>
+              </label>
+              <select
+                id="year" name="year" required
+                value={form.year} onChange={handleChange}
+                className={inputCls}
+              >
+                <option value="">Select year</option>
+                {[1, 2, 3, 4, 5].map((y) => (
+                  <option key={y} value={y}>Year {y}</option>
+                ))}
+              </select>
+            </div>
+          </div>
 
           {/* ── Submit ────────────────────────────────────────────────────── */}
           <Button

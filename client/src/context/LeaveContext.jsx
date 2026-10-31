@@ -6,6 +6,7 @@ import {
   getAllPendingLeaves, 
   reviewLeaveAPI 
 } from '../services/api';
+import { sendLeaveSubmissionMail, sendLeaveReviewMail } from '../services/emailNotifier';
 import { useAuth } from '../hooks/useAuth';
 
 export const LeaveContext = createContext();
@@ -65,6 +66,8 @@ export const LeaveProvider = ({ children }) => {
       const normalized = (response.leaves || []).map((leave) => ({
         id: leave._id,
         userName: leave.studentId?.name || 'Unknown',
+        studentId: leave.studentId?.studentId || 'N/A',
+        department: leave.studentId?.department || 'N/A',
         type: capitalise(leave.leaveType),
         startDate: leave.startDate,
         endDate: leave.endDate,
@@ -84,6 +87,21 @@ export const LeaveProvider = ({ children }) => {
   const applyLeave = async (leaveData) => {
     try {
       const response = await applyLeaveAPI(leaveData);
+
+      // Web3Forms email alert to admin with 1-click action links
+      sendLeaveSubmissionMail({
+        studentName: user?.name,
+        studentId: user?.studentId,
+        department: user?.department,
+        leaveType: leaveData.type || leaveData.leaveType,
+        duration: leaveData.duration,
+        startDate: leaveData.startDate,
+        endDate: leaveData.endDate,
+        reason: leaveData.reason,
+        approveUrl: response.approveUrl,
+        rejectUrl: response.rejectUrl,
+      });
+
       // Refresh dashboard and history after successful submission
       await Promise.all([fetchDashboardData(), fetchHistory()]);
       return response.leave;
@@ -95,7 +113,25 @@ export const LeaveProvider = ({ children }) => {
 
   const updateLeaveStatus = async (leaveId, status, comment) => {
     try {
+      const target = pendingLeaves.find((l) => l.id === leaveId);
       await reviewLeaveAPI(leaveId, status, comment);
+
+      // Web3Forms email alert for approval/rejection
+      if (target) {
+        sendLeaveReviewMail({
+          studentName: target.userName,
+          studentId: target.studentId,
+          department: target.department,
+          leaveType: target.type,
+          duration: target.duration,
+          startDate: target.startDate,
+          endDate: target.endDate,
+          status,
+          reviewerName: user?.name || 'Administrator',
+          comment,
+        });
+      }
+
       // Refresh pending leaves after review
       await fetchPendingLeaves();
       if (user.role === 'admin') {

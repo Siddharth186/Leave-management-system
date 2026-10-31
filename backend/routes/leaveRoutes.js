@@ -8,6 +8,7 @@ const {
   approveLeave,
   rejectLeave,
   getLeaveById,
+  handleEmailAction,
 } = require('../controllers/leaveController');
 
 const { protect } = require('../middleware/authMiddleware');
@@ -27,6 +28,7 @@ const {
  * ┌──────────────────────────────────┬──────────────────┬────────────────────────────────────┐
  * │ Endpoint                         │ Access           │ Description                        │
  * ├──────────────────────────────────┼──────────────────┼────────────────────────────────────┤
+ * │ GET    /api/leaves/email-action  │ Public (Token)   │ 1-Click Approve/Reject from email  │
  * │ POST   /api/leaves/apply         │ Private (student)│ Submit a new leave request         │
  * │ GET    /api/leaves/history       │ Private (student)│ Get own leave history w/ filters   │
  * │ GET    /api/leaves/pending       │ Private (admin)  │ Get all pending leave requests     │
@@ -34,10 +36,11 @@ const {
  * │ PUT    /api/leaves/reject/:id    │ Private (admin)  │ Reject a leave + add comment       │
  * │ GET    /api/leaves/:id           │ Private (both)   │ Get single leave (ownership check) │
  * └──────────────────────────────────┴──────────────────┴────────────────────────────────────┘
- *
- * Note: All routes require authentication (protect).
- * Role-specific routes additionally use restrictTo().
  */
+
+// ─── 1-Click Email Action Route (Public with signed JWT token) ─────────────────
+// Allows manager to approve or reject leave directly from email without logging in
+router.get('/email-action', handleEmailAction);
 
 // ─── Student Routes ───────────────────────────────────────────────────────────
 
@@ -94,9 +97,7 @@ router.put(
 // ─── Shared Routes (student + admin) ─────────────────────────────────────────
 
 // GET /api/leaves/:id
-// Get a single leave by ID — students can only view their own (enforced in controller)
-// IMPORTANT: This must be declared AFTER /pending, /history routes
-// to avoid Express matching "pending" or "history" as :id param
+// Get a single leave by ID — students can only view their own
 router.get(
   '/:id',
   protect,
